@@ -1,0 +1,25 @@
+runtime: python27
+api_version: 1
+threadsafe: true
+
+handlers:
+- url: /publish/.*
+  script: main.app
+  login: admin
+  secure: always
+- url: /.*
+  script: main.app
+
+libraries:
+- name: webapp2
+  version: latest
+- name: pycrypto
+  version: latest
+- name: ssl
+  version: latest
+
+instance_class: F1
+automatic_scaling:
+  min_idle_instances: 0
+  max_idle_instances: 1
+  max_pending_latency: 2000ms

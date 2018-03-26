@@ -1,0 +1,5 @@
+cron:
+- description: Push a "noon" onto pubsub every noon
+  url: /publish/noon
+  schedule: every day 12:00
+  timezone: Asia/Tokyo
