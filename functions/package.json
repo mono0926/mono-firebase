@@ -11,16 +11,19 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@google-cloud/bigquery": "^1.0.0",
-    "@slack/client": "^4.1.0",
-    "firebase-admin": "~5.10.0",
-    "firebase-functions": "^0.9.0",
-    "moment": "^2.21.0",
+    "@google-cloud/bigquery": "^1.2.0",
+    "@slack/client": "^4.2.0",
+    "actions-on-google": "2.0.1",
+    "dialogflow": "^0.3.0",
+    "dialogflow-fulfillment": "0.3.0-beta.2",
+    "firebase-admin": "~5.12.0",
+    "firebase-functions": "^1.0.2",
+    "moment": "^2.22.1",
     "octokat": "^0.10.0"
   },
   "devDependencies": {
     "tslint": "^5.8.0",
-    "typescript": "^2.5.3"
+    "typescript": "^2.8.3"
   },
   "private": true
 }
