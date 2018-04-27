@@ -14,21 +14,29 @@ const BigQuery = require('@google-cloud/bigquery');
 // import Octokat from 'octokat';
 const util = require("util");
 const moment = require("moment");
+const fulfillment = require("dialogflow-fulfillment");
+const owner = 'mono0926';
+const repo = 'LicensePlist';
 // // Start writing Firebase Functions
 // // https://firebase.google.com/docs/functions/typescript
 //
 // export const helloWorld = functions.https.onRequest((request, response) => {
 //  response.send("Hello from Firebase!");
 // });
-function updateLicensePlist() {
+function getStargazersCount() {
     return __awaiter(this, void 0, void 0, function* () {
         const Octokat = require('octokat');
         const octo = Octokat();
-        const owner = 'mono0926';
-        const repo = 'LicensePlist';
         const lp = yield octo.repos(owner, repo).fetch();
         const stargazersCount = lp.stargazersCount;
-        console.log(lp.stargazersCount);
+        console.log(stargazersCount);
+        return stargazersCount;
+    });
+}
+exports.getStargazersCount = getStargazersCount;
+function updateLicensePlist() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const stargazersCount = yield getStargazersCount();
         const bigquery = new BigQuery({ projectId: 'mono-firebase' });
         const results = yield bigquery.query({
             query: `SELECT
@@ -75,7 +83,7 @@ function updateLicensePlist() {
                     fields: [
                         {
                             title: '⭐️',
-                            value: stargazersCount,
+                            value: `${stargazersCount}`,
                             short: true
                         },
                         {
@@ -96,4 +104,15 @@ exports.updateLicensePlist = updateLicensePlist;
 exports.onPublishedNoon = functions.pubsub.topic('noon').onPublish((event) => __awaiter(this, void 0, void 0, function* () {
     yield updateLicensePlist();
 }));
+exports.dialogflowFulfillment = functions.https.onRequest((request, response) => {
+    const agent = new fulfillment.WebhookClient({ request, response });
+    console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
+    console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
+    const intentMap = new Map();
+    intentMap.set('LicensePlist', (a) => __awaiter(this, void 0, void 0, function* () {
+        const stargazersCount = yield getStargazersCount();
+        a.add(`現在${stargazersCount}スターのライブラリですね。すごいスター数です！`);
+    }));
+    agent.handleRequest(intentMap);
+});
 //# sourceMappingURL=index.js.map

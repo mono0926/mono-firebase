@@ -4,6 +4,9 @@ const BigQuery = require('@google-cloud/bigquery');
 // import Octokat from 'octokat';
 import * as util from 'util';
 import * as moment from 'moment';
+import * as fulfillment from 'dialogflow-fulfillment'
+const owner = 'mono0926';
+const repo = 'LicensePlist';
 
 // // Start writing Firebase Functions
 // // https://firebase.google.com/docs/functions/typescript
@@ -12,14 +15,18 @@ import * as moment from 'moment';
 //  response.send("Hello from Firebase!");
 // });
 
-export async function updateLicensePlist() {
+export async function getStargazersCount(): Promise<number> {
   const Octokat = require('octokat')
   const octo = Octokat();
-  const owner = 'mono0926';
-  const repo = 'LicensePlist';
   const lp = await octo.repos(owner, repo).fetch();
   const stargazersCount = lp.stargazersCount;
-  console.log(lp.stargazersCount);
+  console.log(stargazersCount);
+  return stargazersCount;
+}
+
+export async function updateLicensePlist() {
+
+  const stargazersCount = await getStargazersCount();
 
   const bigquery = new BigQuery({ projectId: 'mono-firebase' });
   const results = await bigquery.query({
@@ -65,7 +72,7 @@ export async function updateLicensePlist() {
       fields: [
         {
           title: '⭐️',
-          value: stargazersCount,
+          value: `${stargazersCount}`,
           short: true
         },
         {
@@ -83,4 +90,17 @@ export async function updateLicensePlist() {
 
 export const onPublishedNoon = functions.pubsub.topic('noon').onPublish(async event => {
   await updateLicensePlist();
+});
+
+export const dialogflowFulfillment = functions.https.onRequest((request, response) => {
+  const agent = new fulfillment.WebhookClient({ request, response });
+  console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
+  console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
+   
+  const intentMap = new Map();
+  intentMap.set('LicensePlist', async (a: fulfillment.WebhookClient) => {
+    const stargazersCount = await getStargazersCount();
+    a.add(`現在${stargazersCount}スターのライブラリですね。すごいスター数です！`);
+  });
+  agent.handleRequest(intentMap);
 });
