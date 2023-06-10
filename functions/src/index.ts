@@ -1,106 +1,77 @@
-import * as functions from 'firebase-functions';
-import * as slack from '@slack/client';
-const BigQuery = require('@google-cloud/bigquery');
-// import Octokat from 'octokat';
-import * as util from 'util';
-import * as moment from 'moment';
-import * as fulfillment from 'dialogflow-fulfillment'
-const owner = 'mono0926';
-const repo = 'LicensePlist';
+import * as functions from 'firebase-functions'
+import * as slack from '@slack/client'
+import * as util from 'util'
+import axios from 'axios'
+import moment = require('moment')
+import * as logger from 'firebase-functions/logger'
 
-// // Start writing Firebase Functions
-// // https://firebase.google.com/docs/functions/typescript
-//
-// export const helloWorld = functions.https.onRequest((request, response) => {
-//  response.send("Hello from Firebase!");
-// });
-
-export async function getStargazersCount(): Promise<number> {
-  const Octokat = require('octokat')
-  const octo = Octokat();
-  const lp = await octo.repos(owner, repo).fetch();
-  const stargazersCount = lp.stargazersCount;
-  console.log(stargazersCount);
-  return stargazersCount;
+export async function notifyAirWaitLoop() {
+  // 10秒おきにnotifyAirWaitを実行して、trueが返ってきたら終了する
+  const intervalId = setInterval(async () => {
+    const done = await notifyAirWait()
+    console.log(`done: ${done}`)
+    if (done) {
+      clearInterval(intervalId)
+    }
+  }, 10000)
 }
 
-export async function updateLicensePlist() {
-
-  const stargazersCount = await getStargazersCount();
-
-  const bigquery = new BigQuery({ projectId: 'mono-firebase' });
-  const results = await bigquery.query({
-    query: `SELECT
-    max(stargazers) as stargazers
-  FROM
-    \`noon.githubStargazers\`
-  WHERE
-    date = '${moment().add(-1, 'days').format('YYYY-MM-DD')}'
-  GROUP by date`,
-    useLegacySql: false
-  }) as any[];
-  const rows = results[0];
-  const prev = rows[0].stargazers;
-  console.log(prev);
-
-  try {
-    await bigquery
-    .dataset('noon')
-    .table('githubStargazers')
-    .insert([{
-       date: moment().format('YYYY-MM-DD'), 
-       owner: owner, 
-       repo: repo, 
-       stargazers: stargazersCount }])
-  } catch (error) {
-    console.error(util.inspect(error, true, 4));
-  }
-  const diff = stargazersCount - prev;
-  let diffStr: string = '-';
-  if (diff > 0) {
-    diffStr = `${diff}⤴️`;
-  } else if (diff < 0) {
-    diffStr = `${diff}⤵️`;
-  }
-  const client = new slack.WebClient(functions.config().slack.token);
-  await client.chat.postMessage({ 
-    text: '時報(　´･‿･｀)', 
-    channel: '#-guest-pancake', 
-    attachments: [{
-      color: 'good',
-      title: 'LicensePlist️',
-      fields: [
-        {
-          title: '⭐️',
-          value: `${stargazersCount}`,
-          short: true
-        },
-        {
-          title: '差分',
-          value: diffStr,
-          short: true
-        }
-      ]
+export async function notifyAirWait(): Promise<boolean> {
+  const res = await axios.post(
+    'https://airwait.jp/WCSP/api/internal/stateless/reserve/get',
+    {
+      storeId: 'KR00290960',
+      reserveId: '000161004494',
+      p: 'bd45f1de0044aefe78b9b0106e5256ce515241f3a5d7055dcba700e2867c93a8',
     },
-  {
-    title: 'レポート',
-    text: 'https://datastudio.google.com/open/1gftzwQ1plk6ssie12k9cvLRaxRRAxkDr'
-  }] });
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+        'Sec-Fetch-Site': 'same-origin',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Sec-Fetch-Mode': 'cors',
+        Host: 'airwait.jp',
+        Origin: 'https://airwait.jp',
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15',
+        Referer:
+          'https://airwait.jp/WCSP/waitDetail?storeNo=AKR9144283865&reserveId=000154306830&p=fb5c2ac111e1df19044f43a66946d6a4515241f3a5d7055dcba700e2867c93a8',
+        'Content-Length': '122',
+        Connection: 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        Cookie:
+          'TRC=d62fe682-071d-4319-83a8-907f44478a66; AWT_CSP_SID=f6fea8e4-cfb8-4c13-a4bf-763ac3c5d4c3; r_ad_token1=5413Su00QA15t001msoX; r_ad_token2=5413Su00QA15t001msoX; s_cc=true; s_cm=1; s_fid=3BAE7C5A35C50692-092D38664AC8F671; s_sq=%5B%5BB%5D%5D; s_store_id=KR00290960',
+        Corwcspkeycd: 'AJAX-60FEC286-7B29-454D-A21B-A33AF22DD05B',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-Csrf-Token': '3f6e4470-7a41-46bc-865b-f6a5618d304f',
+      },
+    }
+  )
+  const count = res.data.innerDto.waitCount
+  logger.log(`count: ${count}`)
+  if (count > 1) {
+    return false
+  }
+  const client = new slack.WebClient(functions.config().slack.token)
+  await client.chat.postMessage({
+    text: '<@mono> 順番だよ(　´･‿･｀)',
+    channel: '#mono-log',
+    attachments: [
+      {
+        color: 'good',
+        title: '現在の待ち人数',
+        text: `${count}`,
+      },
+    ],
+  })
+  return true
 }
 
-export const onPublishedNoon = functions.pubsub.topic('noon').onPublish(async event => {
-  await updateLicensePlist();
-});
-
-export const dialogflowFulfillment = functions.https.onRequest((request, response) => {
-  const agent = new fulfillment.WebhookClient({ request, response });
-  console.log('Dialogflow Request headers: ' + JSON.stringify(request.headers));
-  console.log('Dialogflow Request body: ' + JSON.stringify(request.body));
-   
-  const intentMap = new Map();
-  intentMap.set('LicensePlist', async (a: fulfillment.WebhookClient) => {
-    const stargazersCount = await getStargazersCount();
-    a.add(`現在${stargazersCount}スターのライブラリですね。すごいスター数です！`);
-  });
-  agent.handleRequest(intentMap);
-});
+export const onPublishedNoon = functions.pubsub
+  .topic('noon')
+  .onPublish(async (event) => {
+    await notifyAirWait()
+  })
