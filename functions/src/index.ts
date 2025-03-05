@@ -27,8 +27,8 @@ async function getFtidFromShortUrl(shortUrl: string): Promise<string> {
 
 async function getPlaceInfoFromFtid(
   ftid: string,
-): Promise<{ place: string; coordinate: string }> {
-  const apiUrl = `https://maps.googleapis.com/maps/api/place/details/json?ftid=${ftid}&fields=name,geometry&language=ja&key=${googleMapsApiKey.value()}`
+): Promise<{ place: string; coordinate: string; invalidPlace: boolean }> {
+  const apiUrl = `https://maps.googleapis.com/maps/api/place/details/json?ftid=${ftid}&fields=name,geometry,plus_code&language=ja&key=${googleMapsApiKey.value()}`
   const response = await fetch(apiUrl)
   const data = (await response.json()) as any
 
@@ -40,15 +40,17 @@ async function getPlaceInfoFromFtid(
   }
 
   const place = data.result.name
+  const plusCode = data.result.plus_code
   const location = data.result.geometry.location
   const coordinate = `${location.lat},${location.lng}`
 
-  return { place, coordinate }
+  return { place, coordinate, invalidPlace: !plusCode }
 }
 
 function extractAppleMapInfo(url: string): {
   place: string
   coordinate: string
+  invalidPlace: boolean
 } {
   const urlParams = new URLSearchParams(url.split('?')[1])
   const place = urlParams.get('name')
@@ -58,7 +60,7 @@ function extractAppleMapInfo(url: string): {
     throw new HttpsError('invalid-argument', 'Invalid Apple Maps URL')
   }
 
-  return { place, coordinate }
+  return { place, coordinate, invalidPlace: place == 'Marked Location' }
 }
 
 export const convertMap = onRequest(
@@ -80,8 +82,12 @@ export const convertMap = onRequest(
 
       if (url.includes('maps.app.goo.gl')) {
         const ftid = await getFtidFromShortUrl(url)
-        const { place, coordinate } = await getPlaceInfoFromFtid(ftid)
-        const appleMapUrl = `http://maps.apple.com/?q=${encodeURIComponent(place)}`
+        const { place, coordinate, invalidPlace } =
+          await getPlaceInfoFromFtid(ftid)
+        const baseUrl = 'https://maps.apple.com'
+        const appleMapUrl = invalidPlace
+          ? `${baseUrl}/?ll=${coordinate}&q=Marked%20Location`
+          : `${baseUrl}/?q=${encodeURIComponent(place)}`
 
         res.status(200).json({
           place,
@@ -92,8 +98,8 @@ export const convertMap = onRequest(
       }
 
       if (url.includes('maps.apple.com')) {
-        const { place, coordinate } = extractAppleMapInfo(url)
-        const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`
+        const { place, coordinate, invalidPlace } = extractAppleMapInfo(url)
+        const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(invalidPlace ? coordinate : place)}`
 
         res.status(200).json({
           place,
