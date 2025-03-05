@@ -62,7 +62,7 @@ function extractAppleMapInfo(url: string): {
 }
 
 export const convertMap = onRequest(
-  { secrets: [googleMapsApiKey, secretKey] },
+  { secrets: [googleMapsApiKey, secretKey], region: 'asia-northeast1' },
   async (req, res) => {
     try {
       const secretHeader = req.get('X-Secret-String')
