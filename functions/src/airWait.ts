@@ -4,8 +4,10 @@ import * as functions from 'firebase-functions'
 import * as logger from 'firebase-functions/logger'
 import moment = require('moment')
 
+// eslint-disable-next-line require-await
 export async function notifyAirWaitLoop() {
   // 10秒おきにnotifyAirWaitを実行して、trueが返ってきたら終了する
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const intervalId = setInterval(async () => {
     const done = await notifyAirWait()
     console.log(`done: ${done}`)
@@ -46,7 +48,7 @@ export async function notifyAirWait(): Promise<boolean> {
         'X-Requested-With': 'XMLHttpRequest',
         'X-Csrf-Token': '3f6e4470-7a41-46bc-865b-f6a5618d304f',
       },
-    }
+    },
   )
   const count = res.data.innerDto.waitCount
   logger.log(`count: ${count}`)
