@@ -1,77 +1,134 @@
-import * as functions from 'firebase-functions'
-import * as slack from '@slack/client'
-import * as util from 'util'
-import axios from 'axios'
-import moment = require('moment')
 import * as logger from 'firebase-functions/logger'
+import { HttpsError, onRequest } from 'firebase-functions/v2/https'
+import fetch from 'node-fetch'
 
-export async function notifyAirWaitLoop() {
-  // 10秒おきにnotifyAirWaitを実行して、trueが返ってきたら終了する
-  const intervalId = setInterval(async () => {
-    const done = await notifyAirWait()
-    console.log(`done: ${done}`)
-    if (done) {
-      clearInterval(intervalId)
-    }
-  }, 10000)
-}
+// 秘密の文字列（環境変数から取得するのがベスト）
+const SECRET_STRING = 'mySecretKey'
 
-export async function notifyAirWait(): Promise<boolean> {
-  const res = await axios.post(
-    'https://airwait.jp/WCSP/api/internal/stateless/reserve/get',
-    {
-      storeId: 'KR00290960',
-      reserveId: '000161004494',
-      p: 'bd45f1de0044aefe78b9b0106e5256ce515241f3a5d7055dcba700e2867c93a8',
-    },
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-        Accept: 'application/json, text/javascript, */*; q=0.01',
-        'Sec-Fetch-Site': 'same-origin',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Sec-Fetch-Mode': 'cors',
-        Host: 'airwait.jp',
-        Origin: 'https://airwait.jp',
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15',
-        Referer:
-          'https://airwait.jp/WCSP/waitDetail?storeNo=AKR9144283865&reserveId=000154306830&p=fb5c2ac111e1df19044f43a66946d6a4515241f3a5d7055dcba700e2867c93a8',
-        'Content-Length': '122',
-        Connection: 'keep-alive',
-        'Sec-Fetch-Dest': 'empty',
-        Cookie:
-          'TRC=d62fe682-071d-4319-83a8-907f44478a66; AWT_CSP_SID=f6fea8e4-cfb8-4c13-a4bf-763ac3c5d4c3; r_ad_token1=5413Su00QA15t001msoX; r_ad_token2=5413Su00QA15t001msoX; s_cc=true; s_cm=1; s_fid=3BAE7C5A35C50692-092D38664AC8F671; s_sq=%5B%5BB%5D%5D; s_store_id=KR00290960',
-        Corwcspkeycd: 'AJAX-60FEC286-7B29-454D-A21B-A33AF22DD05B',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Csrf-Token': '3f6e4470-7a41-46bc-865b-f6a5618d304f',
-      },
-    }
-  )
-  const count = res.data.innerDto.waitCount
-  logger.log(`count: ${count}`)
-  if (count > 1) {
-    return false
+// Google Maps短縮URLからリダイレクト先を取得する関数
+async function getRedirectUrl(shortUrl: string): Promise<string> {
+  const response = await fetch(shortUrl, {
+    method: 'HEAD',
+    redirect: 'manual',
+  })
+
+  const redirectUrl = response.headers.get('location')
+  if (!redirectUrl) {
+    throw new HttpsError('not-found', 'Failed to get redirect URL')
   }
-  const client = new slack.WebClient(functions.config().slack.token)
-  await client.chat.postMessage({
-    text: '<@mono> 順番だよ(　´･‿･｀)',
-    channel: '#mono-log',
-    attachments: [
-      {
-        color: 'good',
-        title: '現在の待ち人数',
-        text: `${count}`,
-      },
-    ],
-  })
-  return true
+  return redirectUrl
 }
 
-export const onPublishedNoon = functions.pubsub
-  .topic('noon')
-  .onPublish(async (event) => {
-    await notifyAirWait()
-  })
+// Google Maps URLから情報を抽出する関数
+function extractGoogleMapInfo(redirectUrl: string): {
+  place: string
+  ftid: string
+} {
+  const urlParams = new URLSearchParams(redirectUrl.split('?')[1])
+  const query = urlParams.get('q')
+  const ftid = urlParams.get('ftid')
+
+  if (!query || !ftid) {
+    throw new HttpsError(
+      'invalid-argument',
+      'Invalid Google Maps redirect URL: missing q or ftid'
+    )
+  }
+
+  // qパラメーターから場所名を抽出
+  const decodedQuery = decodeURIComponent(query)
+  const parts = decodedQuery.split(' ')
+
+  // 住所やフロア情報をスキップして、場所名を取得
+  let placeStartIndex = 0
+  for (let i = 0; i < parts.length; i++) {
+    if (/〒|都|府|県|市|区|町|村|丁目|番地|^\d+[F]$/.test(parts[i])) {
+      placeStartIndex = i + 1 // 住所やフロアの次の部分から場所名開始
+    }
+  }
+
+  // 住所以降の部分を結合して場所名とする
+  const place = parts.slice(placeStartIndex).join(' ').trim()
+
+  return { place, ftid }
+}
+
+// Apple Maps URLから情報を抽出する関数
+function extractAppleMapInfo(url: string): {
+  place: string
+  coordinate: string
+} {
+  const urlParams = new URLSearchParams(url.split('?')[1])
+  const place = urlParams.get('name')
+  const coordinate = urlParams.get('coordinate')
+
+  if (!place || !coordinate) {
+    throw new HttpsError('invalid-argument', 'Invalid Apple Maps URL')
+  }
+
+  return { place, coordinate }
+}
+
+export const convertMap = onRequest(async (req, res) => {
+  try {
+    // ヘッダーチェック
+    const secretHeader = req.get('X-Secret-String')
+    if (!secretHeader || secretHeader !== SECRET_STRING) {
+      throw new HttpsError(
+        'permission-denied',
+        'Forbidden: Invalid or missing secret string'
+      )
+    }
+
+    const { url } = req.body
+    if (!url || typeof url !== 'string') {
+      throw new HttpsError('invalid-argument', 'URL is required')
+    }
+
+    // Google Maps URL処理
+    if (url.includes('maps.app.goo.gl')) {
+      const redirectUrl = await getRedirectUrl(url)
+      const { place, ftid } = extractGoogleMapInfo(redirectUrl)
+      const appleMapUrl = `http://maps.apple.com/?q=${encodeURIComponent(place)}`
+
+      res.status(200).json({
+        place,
+        appleMapUrl,
+        ftid,
+      })
+      return
+    }
+
+    // Apple Maps URL処理
+    if (url.includes('maps.apple.com')) {
+      const { place, coordinate } = extractAppleMapInfo(url)
+      const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}`
+
+      res.status(200).json({
+        place,
+        googleMapUrl,
+        coordinate,
+      })
+      return
+    }
+
+    throw new HttpsError('invalid-argument', 'Unsupported URL format')
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      res.status(error.httpErrorCode.status).json({
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      })
+    } else {
+      logger.error('Unexpected error:', error)
+      res.status(500).json({
+        error: {
+          code: 'internal',
+          message: 'Internal server error',
+        },
+      })
+    }
+  }
+})
