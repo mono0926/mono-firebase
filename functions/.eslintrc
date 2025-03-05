@@ -1,0 +1,43 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true,
+    "jest": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:import/errors",
+    "plugin:import/warnings",
+    "plugin:prettier/recommended",
+    "prettier"
+  ],
+  "plugins": ["@typescript-eslint", "import"],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "project": "tsconfig.json",
+    "sourceType": "module"
+  },
+  "rules": {
+    "import/no-unresolved": "off",
+    "no-unused-vars": "off",
+    "no-undef": "off",
+    "require-await": "error",
+    "@typescript-eslint/no-floating-promises": "warn",
+    "@typescript-eslint/no-misused-promises": "warn"
+  },
+  "settings": {
+    "jsdoc": {
+      "tagNamePreference": {
+        "returns": "return"
+      }
+    },
+    "import/resolver": {
+      "node": {
+        "extensions": [".js", ".jsx", ".json", ".ts", ".tsx"]
+      }
+    }
+  },
+  "ignorePatterns": ["jest.config.js"]
+}
