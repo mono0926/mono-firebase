@@ -84,10 +84,10 @@ export const convertMap = onRequest(
         const ftid = await getFtidFromShortUrl(url)
         const { place, coordinate, invalidPlace } =
           await getPlaceInfoFromFtid(ftid)
-        const baseUrl = 'https://maps.apple.com'
+        const baseUrl = 'https://maps.apple.com/search'
         const appleMapUrl = invalidPlace
-          ? `${baseUrl}/?ll=${coordinate}&q=Marked%20Location`
-          : `${baseUrl}/?q=${encodeURIComponent(place)}`
+          ? `${baseUrl}?coordinate=${coordinate}`
+          : `${baseUrl}?query=${encodeURIComponent(place)}&center=${coordinate}&span=0.0001,0.0001`
 
         res.status(200).json({
           place,
@@ -99,7 +99,7 @@ export const convertMap = onRequest(
 
       if (url.includes('maps.apple.com')) {
         const { place, coordinate, invalidPlace } = extractAppleMapInfo(url)
-        const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(invalidPlace ? coordinate : place)}`
+        const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${invalidPlace ? '' : encodeURIComponent(`${place} `)}${coordinate}`
 
         res.status(200).json({
           place,
