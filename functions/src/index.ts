@@ -123,13 +123,14 @@ export const convertMap = onRequest(
       if (url.includes('maps.apple.com')) {
         const { place, coordinate, invalidPlace } = extractAppleMapInfo(url)
         const googleMapUrl = await (async () => {
-          const coordinateUrl = `https://www.google.com/maps/search/?api=1&query=${coordinate}`
+          const commonUrl = 'https://www.google.com/maps/search/?api=1&query='
+          const coordinateUrl = `¥${commonUrl}${coordinate}`
           if (invalidPlace) {
             return coordinateUrl
           }
           const placeId = await fetchGooglePlaceId(coordinate, place)
           return placeId
-            ? `https://www.google.com/maps/place/?q=place_id:${placeId}`
+            ? `${commonUrl}${place}&query_place_id=${placeId}`
             : coordinateUrl
         })()
 
