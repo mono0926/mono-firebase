@@ -130,7 +130,7 @@ export const convertMap = onRequest(
           }
           const placeId = await fetchGooglePlaceId(coordinate, place)
           return placeId
-            ? `${commonUrl}${place}&query_place_id=${placeId}`
+            ? `${commonUrl}${encodeURIComponent(place)}&query_place_id=${placeId}`
             : coordinateUrl
         })()
 
