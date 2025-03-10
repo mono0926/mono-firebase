@@ -47,6 +47,29 @@ async function getPlaceInfoFromFtid(
   return { place, coordinate, invalidPlace: !plusCode }
 }
 
+async function fetchGooglePlaceId(
+  coordinate: string,
+  keyword: string,
+): Promise<string | null> {
+  const radius = 1000 // 検索半径（メートル）
+  const apiUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${coordinate}&radius=${radius}&keyword=${encodeURIComponent(keyword)}&language=ja&key=${googleMapsApiKey.value()}`
+
+  const response = await fetch(apiUrl)
+  const data = (await response.json()) as any
+
+  if (data.status !== 'OK') {
+    logger.warn(
+      `Places API error: ${data.status} - ${data.error_message || 'Unknown error'}`,
+    )
+    return null
+  }
+
+  const placeId = data.results[0].place_id
+  logger.info('Found place:', { name: data.results[0].name, placeId })
+
+  return placeId
+}
+
 function extractAppleMapInfo(url: string): {
   place: string
   coordinate: string
@@ -99,7 +122,16 @@ export const convertMap = onRequest(
 
       if (url.includes('maps.apple.com')) {
         const { place, coordinate, invalidPlace } = extractAppleMapInfo(url)
-        const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${invalidPlace ? '' : encodeURIComponent(`${place} `)}${coordinate}`
+        const googleMapUrl = await (async () => {
+          const coordinateUrl = `https://www.google.com/maps/search/?api=1&query=${coordinate}`
+          if (invalidPlace) {
+            return coordinateUrl
+          }
+          const placeId = await fetchGooglePlaceId(coordinate, place)
+          return placeId
+            ? `https://www.google.com/maps/place/?q=place_id:${placeId}`
+            : coordinateUrl
+        })()
 
         res.status(200).json({
           place,
